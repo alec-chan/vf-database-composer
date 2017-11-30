@@ -4,8 +4,9 @@ var fs = require('fs');
 var readline = require('readline');
 
 var args = [];
+var orgID = "";
 
-function AddOrg(name) {
+function AddOrg(name, next) {
     // Build the post string from an object
     var post_data = querystring.stringify({
         'Name' : 'RandomOrg'+name
@@ -23,21 +24,18 @@ function AddOrg(name) {
         }
     };
 
-    var ret = Post(post_options, post_data);
-
-    console.log("Added an org.");
-
-    return ret;
+    var ret = Post(post_options, post_data, x => {console.log("Added an org."); next();});
+    
 }
 
-function AddUser(name) {
+function AddUser(name, orgid, next) {
     // Build the post string from an object
     var post_data = querystring.stringify({
-        'Name' : 'RandomPerson'+name,
-        'Phone': '123-123-1234',
-        'Email': 'user@email.com',
-        'username': 'someusername'+name,
-        'rawPassword': 'somepassword'
+        "Name" : "RandomPerson"+name,
+        "Phone": "123-123-1234",
+        "Email": "user@email.com",
+        "Username": "someusername"+name,
+        "Password": "somepassword"
     });
 
     // An object of options to indicate where to post to
@@ -52,28 +50,27 @@ function AddUser(name) {
         }
     };
 
-    Post(post_options, post_data);
+    Post(post_options, post_data, x => {console.log("Added a user. ID:"); next();});
 
-    console.log("Added a user.");
 }
 
-function AddParty(name, orgid) {
+function AddParty(name, orgid, next) {
     // Build the post string from an object
     var post_data = querystring.stringify({
         'Name' : 'RandomParty'+name,
-        'OrgID': orgid,
+        'OrgID': orgID,
         'Capacity': '100',
         'UnixDate': '0',
         'Latitude': '43.0777320',
         'Longitude': '-89.4177600',
-        'IsPublic': (Math.random() < 0.5).toString()
+        'IsPublic': (Math.random() < 0.5)
     });
 
     // An object of options to indicate where to post to
     var post_options = {
         host: args[0],
         port: args[1],
-        path: '/user/add',
+        path: '/parties/add',
         method: 'POST',
         headers: {
             'Content-Type': 'application/x-www-form-urlencoded',
@@ -81,12 +78,10 @@ function AddParty(name, orgid) {
         }
     };
 
-    Post(post_options, post_data);
-
-    console.log("Added a user.");
+    Post(post_options, post_data, x => {console.log("Added a party."); next();});
 }
 
-function Post(post_options, post_data) {
+function Post(post_options, post_data, onresp) {
     // Set up the request
     var resp = "";
 
@@ -94,6 +89,9 @@ function Post(post_options, post_data) {
         res.setEncoding('utf8');
         res.on('data', function (chunk) {
             resp = chunk;
+            if(resp.includes("org")){orgID = resp; console.log("OrgID is "+orgID);}
+            onresp();
+            console.log(resp);
         });
     });
 
@@ -101,25 +99,29 @@ function Post(post_options, post_data) {
     post_req.write(post_data);
     post_req.end();
 
-    return chunk;
+    return resp;
 }
 
-function NukeDB() {
+function NukeDB(next) {
     console.log('Attempting to drop VeriFrat database...\n');
 
-    http.get(args[0]+args[1]+"/nukedb", res => {
-        res.setEncoding("utf8");
-        let body = "";
-        res.on("data", data => {
-          body += data;
+    var optionsget = {
+        host : args[0],
+        port : args[1],
+        path : '/nukedb', // the rest of the url with parameters if needed
+        method : 'GET' // do GET
+    };
+
+    var reqGet = http.request(optionsget, function(res) {
+        res.on('data', function(d) {
+            console.log(
+                "Successfully dropped database <verifrat-db>\n"
+            );   
+            next();     
         });
-        res.on("end", () => {
-          body = JSON.parse(body);
-          console.log(
-              "Successfully dropped database <verifrat-db>\n"
-          );
-        });
-      });
+    });
+    
+    reqGet.end();
 }
 
 var main = function () { 
@@ -130,7 +132,7 @@ var main = function () {
     
     rl.question('Enter VeriFrat API host IP (Default: localhost) \n', function(line){
         if(line === "") {
-            line = "http://localhost/";
+            line = "localhost";
         }
         args.push(line);
         rl.question('Enter VeriFrat API host port (Default: 5000) \n', function(line){
@@ -147,16 +149,24 @@ var main = function () {
         console.log("Port: "+ args[1]);
         console.log("           Starting test sequence..");
         console.log("================================================")
-        NukeDB();
-        var orgID = AddOrg();
-        AddUser();
-        AddParty();
-        AddParty();
-        AddParty();
-        AddParty();
+        NukeDB(x=> {
+            AddOrg(1, x=> {
+                AddUser(1, orgID, x=> {
+                    AddParty(1, orgID, x => {
+                        AddParty(2, orgID, x=> {
+                            AddParty(3, orgID, x=> {
+                                AddParty(4, orgID, x=> {
+                                    console.log("Test complete.");
+                                });
+                            });
+                        });
+                    });                    
+                });
+            });
+        });
         
-    }
 
+    }
 } 
 if (require.main === module) { 
     main(); 
